@@ -1,0 +1,16 @@
+{
+  "name": "talking",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "cd client && npm install && npm run build && node ../scripts/copyClientDist.js",
+    "start": "cd server && npm install && npm run start",
+    "clean": "cd client && if exist node_modules rmdir /s /q node_modules && cd ../server && if exist node_modules rmdir /s /q node_modules",
+    "bundle": "npm run build && if exist dist rmdir /s /q dist && mkdir dist && xcopy client dist\\client /E /I /Y && xcopy server dist\\server /E /I /Y",
+    "deploy": "npm run build && npm run start"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
