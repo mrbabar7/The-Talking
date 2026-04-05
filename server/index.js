@@ -1,6 +1,5 @@
 const express = require("express");
-const { app, server } = require("./lib/socket");
-// const app = express();
+const { app } = require("./lib/socket"); // Note: server.listen won't work on Vercel
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 const cors = require("cors");
@@ -12,71 +11,71 @@ const { authRouter } = require("./routes/authRoutes");
 const { chatRouter } = require("./routes/chatRoutes");
 const { profileRouter } = require("./routes/profileRoutes");
 const { urlencoded } = require("body-parser");
+
 dotenv.config();
+
+// Middleware
 app.use(urlencoded({ extended: false }));
 app.use(express.json());
-const MONGO_URL = process.env.MONGO_URL;
 app.use(
   cors({
-    origin: process.env.CLIENT_URL ? process.env.CLIENT_URL : true,
+    origin: process.env.CLIENT_URL || true,
     credentials: true,
-  })
+  }),
 );
+
 app.use(
   fileUpload({
     useTempFiles: true,
-    tempFileDir: os.tmpdir(), // important: explicit temp dir
+    tempFileDir: os.tmpdir(),
     createParentPath: true,
-  })
+  }),
 );
-const store = MongoStore.create({
-  mongoUrl: MONGO_URL,
-  collectionName: "sessions",
+
+// Database Connection Logic (Serverless optimized)
+let isConnected = false;
+const connectDB = async () => {
+  mongoose.set("strictQuery", true);
+  if (isConnected) return;
+
+  try {
+    await mongoose.connect(process.env.MONGO_URL);
+    isConnected = true;
+    console.log("MongoDB Connected");
+  } catch (error) {
+    console.error("DB Connection Error:", error);
+  }
+};
+
+// Apply DB connection to all requests
+app.use(async (req, res, next) => {
+  await connectDB();
+  next();
 });
-store.on("error", (err) => {
-  console.error("❌ SESSION STORE ERROR:", err);
-});
+
+// Session Management
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "xyzabc555",
     resave: false,
     saveUninitialized: false,
     store: MongoStore.create({
-      mongoUrl: MONGO_URL,
+      mongoUrl: process.env.MONGO_URL,
       collectionName: "sessions",
     }),
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      maxAge: 1000 * 60 * 60 * 24, // 1 day
+      secure: true, // Vercel is always HTTPS
+      sameSite: "none",
+      maxAge: 1000 * 60 * 60 * 24,
     },
-  })
+  }),
 );
 
-app.use("/", authRouter);
-app.use("/api", chatRouter);
+// Routes
+app.use("/api/auth", authRouter); // Good practice to prefix auth
+app.use("/api/chat", chatRouter);
 app.use("/api/profile", profileRouter);
-const PORT = process.env.PORT || 5000;
-mongoose
-  .connect(MONGO_URL)
-  .then(() => {
-    console.log("mongo db is connected");
-    server.listen(PORT, () => {
-      console.log(`server is running at port: ${PORT}`);
-    });
-  })
-  .catch((error) => {
-    console.log(`error while connecting to DB : ${error}`);
-  });
 
-// Serve client build in production (monorepo deployment)
-if (process.env.NODE_ENV === "production") {
-  const path = require("path");
-  const clientDist = path.join(__dirname, "dist");
-  app.use(express.static(clientDist));
-
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(clientDist, "index.html"));
-  });
-}
+// Export for Vercel
+module.exports = app;
